@@ -4,37 +4,88 @@
         <meta charset="UTF-8" />
         <title>OTP</title>
     </head>
-    <body>
+    <body class="loading no-cards">
         <header>
-            <svg class="progress-ring" viewBox="0 0 120 120">
-                <circle stroke="white" stroke-width="20" fill="transparent" r="40" cx="60" cy="60" />
-            </svg>
-            <input type="text" id="search" placeholder="Search" />
-            <button type="button" id="edit">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+            <input id="search" type="text" placeholder="Search" />
+            <p id="message"></p>
+            <div class="interval-track">
+                <span id="interval"></span>
+                <span></span>
+            </div>
+        </header>
+        <div id="intro">
+            <p>
+                To add your first Time-Based OTP account ensure the entire QR code is visible on the screen,
+                then click Add.
+            </p>
+            <button type="button" data-btn="add" aria-label="Add" title="Add">
+                <span>Add</span>
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24px"
+                    viewBox="0 -960 960 960"
+                    width="24px"
+                    fill="#e3e3e3"
+                >
                     <path
-                        d="M497.9 142.1l-46.1 46.1c-4.7 4.7-12.3 4.7-17 0l-111-111c-4.7-4.7-4.7-12.3 0-17l46.1-46.1c18.7-18.7 49.1-18.7 67.9 0l60.1 60.1c18.8 18.7 18.8 49.1 0 67.9zM284.2 99.8L21.6 362.4 .4 483.9c-2.9 16.4 11.4 30.6 27.8 27.8l121.5-21.3 262.6-262.6c4.7-4.7 4.7-12.3 0-17l-111-111c-4.8-4.7-12.4-4.7-17.1 0zM124.1 339.9c-5.5-5.5-5.5-14.3 0-19.8l154-154c5.5-5.5 14.3-5.5 19.8 0s5.5 14.3 0 19.8l-154 154c-5.5 5.5-14.3 5.5-19.8 0zM88 424h48v36.3l-64.5 11.3-31.1-31.1L51.7 376H88v48z"
-                    />
+                        d="M800-560v-120H680v-80h120q33 0 56.5 23.5T880-680v120h-80Zm-720 0v-120q0-33 23.5-56.5T160-760h120v80H160v120H80Zm600 360v-80h120v-120h80v120q0 33-23.5 56.5T800-200H680Zm-520 0q-33 0-56.5-23.5T80-280v-120h80v120h120v80H160Z"
+                    ></path>
                 </svg>
             </button>
-        </header>
-        <main>
-            <p id="filter"></p>
-            <ul id="cards"></ul>
-        </main>
-        <div id="editor">
-            <div class="dialog">
-                <form method="dialog">
-                    <textarea></textarea>
-                    <footer>
-                        <button type="reset" class="cancel">Cancel</button>
-                        <button type="button" class="export">Export</button>
-                        <button type="submit">Save</button>
-                    </footer>
-                </form>
+        </div>
+        <main id="cards"></main>
+        <footer>
+            <button type="button" data-btn="add" aria-label="Add" title="Add">
+                <span>Add</span>
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24px"
+                    viewBox="0 -960 960 960"
+                    width="24px"
+                    fill="#e3e3e3"
+                >
+                    <path
+                        d="M800-560v-120H680v-80h120q33 0 56.5 23.5T880-680v120h-80Zm-720 0v-120q0-33 23.5-56.5T160-760h120v80H160v120H80Zm600 360v-80h120v-120h80v120q0 33-23.5 56.5T800-200H680Zm-520 0q-33 0-56.5-23.5T80-280v-120h80v120h120v80H160Z"
+                    ></path>
+                </svg>
+            </button>
+            <button type="button" data-btn="delete" aria-label="Delete" title="Delete">
+                <span>Delete</span>
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24px"
+                    viewBox="0 -960 960 960"
+                    width="24px"
+                    fill="#e3e3e3"
+                >
+                    <path
+                        d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"
+                    ></path>
+                </svg>
+            </button>
+            <button type="button" data-btn="export" aria-label="Export" title="Export">
+                <span>Export</span>
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24px"
+                    viewBox="0 -960 960 960"
+                    width="24px"
+                    fill="#e3e3e3"
+                >
+                    <path
+                        d="M160-120v-80h640v80H160Zm320-160L280-480l56-56 104 104v-408h80v408l104-104 56 56-200 200Z"
+                    ></path>
+                </svg>
+            </button>
+        </footer>
+        <div id="modal" class="hidden">
+            <p></p>
+            <div class="buttons">
+                <button type="button" data-btn="cancel">Cancel</button>
+                <button type="button" data-btn="confirm"></button>
             </div>
         </div>
-        <div class="toast" id="copied">Copied!</div>
+        <div class="overlay"></div>
         <script type="module" src="/src/renderer.ts"></script>
     </body>
 </html>

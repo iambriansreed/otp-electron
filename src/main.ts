@@ -1,19 +1,24 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, desktopCapturer } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { Jimp } from 'jimp';
+import jsqr from 'jsqr';
+import { Item } from './utils';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) {
     app.quit();
 }
 
+let mainWindow: BrowserWindow | null;
+
 const createWindow = () => {
     // Create the browser window.
-    const mainWindow = new BrowserWindow({
-        width: 400,
+    mainWindow = new BrowserWindow({
+        width: 300,
         height: 600,
-        x: 100,
-        y: 100,
+        x: 50,
+        y: 50,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             sandbox: false,
@@ -26,33 +31,95 @@ const createWindow = () => {
     } else {
         mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
     }
-
-    const USER_DATA_PATH = path.join(app.getPath('userData'), 'otp-data.txt');
-
-    ipcMain.on('window-view', () => {
-        mainWindow.setSize(400, 600);
-    });
-
-    ipcMain.on('window-edit', () => {
-        mainWindow.setSize(600, 600);
-    });
-
-    ipcMain.handle('get-user-data', async () => {
-        let data = '';
-        try {
-            data = fs.readFileSync(USER_DATA_PATH, 'utf-8').replace(/\n+/g, '\n\n');
-        } catch (error) {
-            console.log('Error retrieving user data', error);
-            // you may want to propagate the error, up to you
-        }
-
-        return data;
-    });
-
-    ipcMain.handle('set-user-data', (event, data) => {
-        fs.writeFileSync(USER_DATA_PATH, data.replace(/\n+/g, '\n'));
-    });
 };
+
+const USER_DATA_PATH = path.join(app.getPath('userData'), 'otp-data.txt');
+
+ipcMain.handle('readUserData', async () => {
+    let data = '';
+
+    try {
+        data = safeStorage.decryptString(fs.readFileSync(USER_DATA_PATH));
+    } catch (error) {
+        console.log('Error retrieving user data', error);
+        // you may want to propagate the error, up to you
+    }
+
+    console.log('User data:', data);
+    return data;
+});
+
+function limitPromiseResponseTime<T>(promise: Promise<T>, time = 5000): Promise<T> {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            reject(new Error('Promise timed out'));
+        }, time);
+
+        promise
+            .then((result) => {
+                clearTimeout(timeout);
+                resolve(result);
+            })
+            .catch((error) => {
+                clearTimeout(timeout);
+                reject(error);
+            });
+    });
+}
+
+ipcMain.handle('getScreenOTP', async (): Promise<Item | { error: string }> => {
+    const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 2000, height: 2000 },
+    });
+    if (sources.length === 0) {
+        console.log('No screen sources found');
+        return { error: 'No screen sources found' };
+    }
+    const dataUrl = sources[0].thumbnail.toDataURL();
+
+    const image = await Jimp.read(dataUrl);
+
+    // Get the image data
+    const imageData = {
+        data: new Uint8ClampedArray(image.bitmap.data),
+        width: image.bitmap.width,
+        height: image.bitmap.height,
+    };
+
+    const code = jsqr(imageData.data, image.width, image.height);
+
+    if (!code) {
+        console.log('No QR code found');
+        return { error: 'No QR code found' };
+    }
+
+    const url = new URL(code.data);
+    const issuer = url.searchParams.get('issuer') || '';
+    const account = url.pathname.slice(1); // Remove leading slash
+    const secret = url.searchParams.get('secret') || '';
+
+    if (!secret) {
+        console.log('Invalid QR code found');
+        return { error: 'Invalid QR code found' };
+    }
+
+    return {
+        issuer,
+        account,
+        secret,
+        id: 'item-' + Date.now(),
+        blob: [issuer, account].join(' ').toLowerCase(),
+    };
+});
+
+ipcMain.handle('writeUserData', (event, data) => {
+    fs.writeFileSync(USER_DATA_PATH, Uint8Array.from(safeStorage.encryptString(data)));
+});
+
+ipcMain.handle('log', (event, data) => {
+    console.log(data);
+});
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -75,6 +142,3 @@ app.on('activate', () => {
         createWindow();
     }
 });
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.

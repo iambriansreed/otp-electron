@@ -1,202 +1,96 @@
 import './index.scss';
+import {
+    getData,
+    intervalStart,
+    createCards,
+    confirmModal,
+    downloadItemsAsJson,
+    showMessage,
+    createCard,
+} from './utils';
 
-async function getData() {
-    return (await window.app.readUserData()) || '';
-}
+document.querySelector<HTMLButtonElement>('#search').addEventListener('input', () => {
+    const search = (document.querySelector<HTMLInputElement>('#search')!.value || '').toLowerCase();
 
-const cardsContainer = document.querySelector<HTMLElement>('#cards')!;
-const filter = document.querySelector<HTMLElement>('#filter')!;
-const toastCopy = document.querySelector<HTMLElement>('#copied')!;
-const searchInput = document.querySelector<HTMLInputElement>('#search')!;
-const editBtn = document.querySelector<HTMLButtonElement>('#edit')!;
+    window.cards.forEach((card) => card.classList.remove('hidden'));
 
-const editor = document.querySelector('#editor')!;
-const textarea = editor.querySelector<HTMLTextAreaElement>('textarea')!;
-const form = editor.querySelector('form')!;
-const exportBtn = editor.querySelector<HTMLButtonElement>('.export')!;
+    if (!search) return showMessage('');
 
-type Item = {
-    issuer: string;
-    key: string;
-    account: string;
-    id: string;
-    dupKeys?: string[];
-};
-
-let items: Item[] = [];
-let cards: Record<string, HTMLElement> = {};
-let editing = false;
-let rawData = '';
-
-async function init(list: string) {
-    rawData = list;
-
-    cards = {};
-
-    const itemsLookup: Record<string, Item> = {};
-
-    list.split('\n').forEach((line) => {
-        const urlStr = line.trim();
-
-        if (!URL.canParse(urlStr)) return null;
-
-        const { pathname, searchParams } = new URL(urlStr);
-
-        const issuer = decodeURIComponent(searchParams.get('issuer'));
-        const key = searchParams.get('secret');
-
-        const account =
-            decodeURIComponent(decodeURIComponent(pathname))
-                .split(issuer + ':')[1]
-                ?.replace('undefined', '') || '';
-
-        if (itemsLookup[pathname])
-            itemsLookup[pathname].dupKeys = [...(itemsLookup[pathname].dupKeys || []), key];
-        else itemsLookup[pathname] = { issuer, key, account, id: pathname };
+    let itemsShowing = 0;
+    window.items.forEach(({ blob, id }) => {
+        if (blob.includes(search)) return itemsShowing++;
+        window.cards.find((card) => card.id === id)?.classList.add('hidden');
     });
 
-    items = Object.values(itemsLookup);
+    showMessage(
+        itemsShowing === 0 ? 'No items found' : `Showing ${itemsShowing} of ${window.cards.length} items`
+    );
+});
 
-    createCards();
-}
+document.querySelector<HTMLButtonElement>('[data-btn="delete"]').addEventListener('click', () => {
+    document.body.classList.toggle('delete');
 
-function createCards() {
-    if (!items.length) {
-        cardsContainer.innerHTML = '<li class="empty">No items found</li>';
-    }
+    showMessage(
+        document.body.classList.contains('delete')
+            ? 'Click on the OTP you want to delete. Click Delete to confirm.'
+            : ''
+    );
+});
 
-    cardsContainer.innerHTML = '';
-    items.forEach(({ issuer, key, account, id }) => {
-        const li = document.createElement('li');
-        li.id = id;
+document.querySelector<HTMLButtonElement>('[data-btn="export"]').addEventListener('click', () => {
+    confirmModal('Are you sure you want to export all secrets as unencrypted plain text?').then(
+        (response) => {
+            if (response) downloadItemsAsJson();
+        }
+    );
+});
 
-        li.innerHTML = `<div class="card">
-    <div class="issuer">${issuer}</div>
-    <div class="code">${window.app.generateOTP(key)}</div>
-    <div class="account">${account || '&mdash;'}</div></div>`;
+document.querySelectorAll<HTMLButtonElement>('[data-btn="add"]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+        //
 
-        cardsContainer.appendChild(li);
+        const item = await window.app.getScreenOTP();
 
-        cards[id] = li;
+        if ('error' in item) {
+            showMessage(item.error, 'error', 10);
+            return;
+        }
 
-        li.addEventListener('click', () => onClickCopy(key, li));
-    });
-}
+        const card = createCard(item);
+
+        window.cards.push(card);
+        window.items.push(item);
+
+        window.scrollTo(0, 0);
+        document.querySelector<HTMLElement>('#cards')!.prepend(card);
+        card.classList.add('new');
+
+        showMessage('New OTP added', 'success', 5);
+        setTimeout(() => card.classList.remove('new'), 10000);
+    })
+);
+
+window.modal = document.querySelector<HTMLElement>('#modal')!;
+
+window.modal.querySelector<HTMLElement>('[data-btn="confirm"]').addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('confirm'));
+});
+
+window.modal.querySelector<HTMLElement>('[data-btn="cancel"]')!.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('cancel'));
+});
 
 (async () => {
-    init(await getData());
+    // Show loading animation
+    setTimeout(() => {
+        document.body.classList.remove('loading');
+    }, 1000);
+
+    await getData();
+
+    createCards();
+
+    intervalStart();
+
+    console.log();
 })();
-
-function showToastCopy(element: HTMLElement) {
-    element.appendChild(toastCopy);
-    const animationEventListener = () => toastCopy.classList.remove('show');
-    toastCopy.removeEventListener('animationend', animationEventListener);
-    toastCopy.classList.remove('show');
-    toastCopy.offsetWidth;
-    toastCopy.classList.add('show');
-    toastCopy.addEventListener('animationend', animationEventListener);
-}
-
-function onClickCopy(key: string, element: HTMLElement) {
-    navigator.clipboard.writeText(window.app.generateOTP(key));
-    showToastCopy(element.firstChild as HTMLElement);
-}
-
-searchInput.addEventListener('input', (e) => {
-    const value = (e.target as HTMLInputElement).value.toLowerCase();
-
-    if (!value) {
-        items.forEach(({ id }) => {
-            document.getElementById(id).classList.remove('hide');
-        });
-        filter.innerText = '';
-        return;
-    }
-
-    let hiding = 0;
-    items.forEach(({ issuer, account, id }) => {
-        const hide = !issuer.toLowerCase().includes(value) && !account.toLowerCase().includes(value);
-
-        hiding += hide ? 1 : 0;
-
-        document.getElementById(id).classList.toggle('hide', hide);
-    });
-
-    filter.innerText = `Showing ${items.length - hiding} of ${items.length} entries.`;
-});
-
-function refreshCodes() {
-    items.forEach(({ key, id }) => {
-        cards[id].querySelector('.code')!.textContent = window.app.generateOTP(key);
-    });
-}
-
-const circle = document.querySelector('circle');
-const radius = circle.r.baseVal.value;
-const circumference = radius * 2 * Math.PI;
-
-circle.style.strokeDasharray = `${circumference} ${circumference}`;
-circle.style.strokeDashoffset = `${circumference}`;
-
-function setProgress(percent: number) {
-    const offset = circumference - (percent / 100) * circumference;
-    circle.style.strokeDashoffset = offset.toString();
-}
-
-// reloader
-{
-    let progress = 10;
-    setInterval(() => {
-        setProgress(progress);
-        progress += 1.5;
-        if (progress >= 100) {
-            progress = 0;
-            refreshCodes();
-        }
-    }, 500);
-}
-
-editBtn.addEventListener('click', toggleEditing);
-
-async function toggleEditing() {
-    editing = !editing;
-    document.body.classList.toggle('editing', editing);
-    window.app.windowResize(editing);
-    if (editing) textarea.value = await getData();
-}
-
-form.addEventListener('submit', () => {
-    window.app.writeUserData(textarea.value);
-    init(textarea.value);
-    toggleEditing();
-});
-
-editor.querySelector('[type="reset"]')!.addEventListener('click', async () => {
-    toggleEditing();
-});
-
-exportBtn.addEventListener('click', async () => {
-    const a = document.createElement('a');
-    document.body.appendChild(a);
-    a.style.display = 'none';
-
-    const blob = new Blob([rawData], { type: 'octet/stream' }),
-        url = window.URL.createObjectURL(blob);
-    a.href = url;
-    a.download = 'otp-data.txt';
-    a.click();
-    window.URL.revokeObjectURL(url);
-});
-
-editor.addEventListener('click', (e) => {
-    const target = e.target as HTMLElement;
-    if (document.body.classList.contains('editing') && !target.closest('.dialog')) {
-        toggleEditing();
-    }
-});
-
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && document.body.classList.contains('editing')) {
-        toggleEditing();
-    }
-});
